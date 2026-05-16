@@ -147,12 +147,16 @@ type RuleMatch struct {
 	// +optional
 	// +kubebuilder:validation:items:Enum=GET;HEAD;POST;PUT;PATCH;DELETE;OPTIONS;CONNECT;TRACE
 	Methods []string `json:"methods,omitempty"`
-	// Ports filters by the port suffix in the request authority (e.g. the
-	// "8443" in "api.example.com:8443"). Multiple entries are ORed. A
-	// request without an explicit port (such as plain "api.example.com",
-	// where the client relied on the scheme default) does NOT match a
-	// non-empty Ports list — write a separate rule without Ports if you
-	// also want to match the default port.
+	// Ports filters by the port the client targeted on the upstream
+	// authority. Multiple entries are ORed.
+	//
+	// When the request authority spells out a port (e.g.
+	// "api.example.com:8443"), that port is used directly. When the client
+	// omits the port — relying on the scheme default — the matcher infers
+	// 80 for http and 443 for https from the request's :scheme. Listing
+	// `ports: [80]` therefore matches both "host:80" and a plain "host"
+	// over HTTP. An unrecognized scheme leaves the inferred port at 0,
+	// which never matches a non-empty Ports list.
 	// +optional
 	// +kubebuilder:validation:items:Minimum=1
 	// +kubebuilder:validation:items:Maximum=65535

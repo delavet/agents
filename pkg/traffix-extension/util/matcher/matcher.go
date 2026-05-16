@@ -303,12 +303,18 @@ func splitPathAndQuery(rawPath string) (string, string) {
 }
 
 // ParseRequestInfo extracts RequestInfo from Envoy header values.
-// Envoy sends pseudo-headers (:method, :path, :authority) and the Host header.
-// :authority is the gRPC/HTTP2 equivalent of Host.
+// Envoy sends pseudo-headers (:method, :path, :authority, :scheme) and the
+// Host header. :authority is the gRPC/HTTP2 equivalent of Host.
 //
 // Splits performed here:
 //   - :authority "host:port"  -> Host, Port
 //   - :path "/p?q=1"          -> Path, Query
+//
+// Port inference: when :authority does not include an explicit port, the
+// default port is taken from :scheme — http=80, https=443. This lets a rule
+// that lists `ports: [80]` match plain `http://host/...` requests where the
+// client did not spell out ":80". An explicit port in the authority always
+// overrides the inference; an unrecognized scheme leaves Port=0.
 //
 // The headers map is captured in the returned RequestInfo so that header-
 // based rule matching can use it; callers SHOULD pass a lowercase-keyed
@@ -320,6 +326,11 @@ func ParseRequestInfo(headers map[string]string) RequestInfo {
 		info.Host, info.Port = splitHostPort(auth)
 	} else if host, ok := headers["host"]; ok && host != "" {
 		info.Host, info.Port = splitHostPort(host)
+	}
+
+	// Infer the port from :scheme when the authority omitted it.
+	if info.Port == 0 {
+		info.Port = inferPortFromScheme(headers[":scheme"])
 	}
 
 	if path, ok := headers[":path"]; ok {
@@ -337,6 +348,19 @@ func ParseRequestInfo(headers map[string]string) RequestInfo {
 	}
 
 	return info
+}
+
+// inferPortFromScheme returns the conventional default port for the scheme,
+// or 0 when the scheme is empty or unrecognized.
+func inferPortFromScheme(scheme string) int32 {
+	switch strings.ToLower(scheme) {
+	case "http":
+		return 80
+	case "https":
+		return 443
+	default:
+		return 0
+	}
 }
 
 // ParseHeaderValue extracts a header value from the Envoy headers.

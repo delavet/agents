@@ -534,6 +534,58 @@ func TestMatchRequest_Ports(t *testing.T) {
 	}
 }
 
+// TestParseRequestInfo_InfersPortFromScheme verifies that an authority
+// without an explicit port falls back to the scheme's default (80/443),
+// while an unrecognized or missing scheme yields Port=0.
+func TestParseRequestInfo_InfersPortFromScheme(t *testing.T) {
+	tests := []struct {
+		name      string
+		authority string
+		scheme    string
+		wantPort  int32
+	}{
+		{"http scheme infers 80", "api.example.com", "http", 80},
+		{"HTTPS scheme infers 443 (case-insensitive)", "api.example.com", "HTTPS", 443},
+		{"explicit port overrides http inference", "api.example.com:8080", "http", 8080},
+		{"explicit port overrides https inference", "api.example.com:9443", "https", 9443},
+		{"unknown scheme leaves Port=0", "api.example.com", "ftp", 0},
+		{"missing scheme leaves Port=0", "api.example.com", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := map[string]string{
+				":authority": tt.authority,
+				":path":      "/",
+				":method":    "GET",
+			}
+			if tt.scheme != "" {
+				h[":scheme"] = tt.scheme
+			}
+			info := ParseRequestInfo(h)
+			if info.Port != tt.wantPort {
+				t.Errorf("got Port=%d, want %d", info.Port, tt.wantPort)
+			}
+		})
+	}
+}
+
+// TestInferPortFromScheme exercises the helper directly.
+func TestInferPortFromScheme(t *testing.T) {
+	cases := map[string]int32{
+		"http":  80,
+		"HTTP":  80,
+		"https": 443,
+		"Https": 443,
+		"ftp":   0,
+		"":      0,
+	}
+	for in, want := range cases {
+		if got := inferPortFromScheme(in); got != want {
+			t.Errorf("inferPortFromScheme(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
 // TestMatchPort_EmptyList verifies the empty Ports list semantics directly.
 func TestMatchPort_EmptyList(t *testing.T) {
 	if !matchesCondition(
