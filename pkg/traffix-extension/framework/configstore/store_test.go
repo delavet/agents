@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	v1alpha1 "github.com/openkruise/agents/api/v1alpha1"
+	"github.com/openkruise/agents/pkg/traffix-extension/model"
 )
 
 func newTestProfile(name, namespace string, matchLabels map[string]string) *v1alpha1.SecurityProfile {
@@ -122,6 +123,119 @@ func TestFindProfilesForLabels_MultipleProfiles(t *testing.T) {
 	// Verify ordering by creation time (earlier first)
 	if matched[0].Profile.Name != "beta-profile" || matched[1].Profile.Name != "alpha-profile" {
 		t.Errorf("expected profiles sorted by creation time, got [%s, %s]", matched[0].Profile.Name, matched[1].Profile.Name)
+	}
+}
+
+func TestFindProfilesForLabels_TieBreakOnName(t *testing.T) {
+	// When CreationTimestamps are equal (common in unit tests and inside the
+	// same reconcile second in production), ordering must remain
+	// deterministic — name ascending — to keep downstream rule evaluation
+	// reproducible. Run the build a few times to make a regression to
+	// non-stable sort visible.
+	for attempt := range 10 {
+		store := NewStore()
+		ts := metav1.NewTime(time.Now())
+		names := []string{"charlie", "alpha", "bravo", "delta"}
+		for _, n := range names {
+			p := newTestProfile(n, "default", map[string]string{"app": "ai-agent"})
+			p.CreationTimestamp = ts
+			store.ProfileSet(p)
+		}
+
+		matched := store.FindProfilesForLabels("default", map[string]string{"app": "ai-agent"})
+		if len(matched) != 4 {
+			t.Fatalf("attempt %d: expected 4 profiles, got %d", attempt, len(matched))
+		}
+		want := []string{"alpha", "bravo", "charlie", "delta"}
+		for i, w := range want {
+			if matched[i].Profile.Name != w {
+				t.Fatalf("attempt %d: position %d: expected %q, got %q (full order: %v)",
+					attempt, i, w, matched[i].Profile.Name, profileNames(matched))
+			}
+		}
+	}
+}
+
+func profileNames(profiles []*model.SecurityProfile) []string {
+	out := make([]string, 0, len(profiles))
+	for _, p := range profiles {
+		out = append(out, p.Profile.Name)
+	}
+	return out
+}
+
+func TestProfileSet_InvalidSelectorIsSkipped(t *testing.T) {
+	store := NewStore()
+
+	bad := &v1alpha1.SecurityProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "bad", Namespace: "default"},
+		Spec: v1alpha1.SecurityProfileSpec{
+			Selector: metav1.LabelSelector{
+				// "!" is not a valid label key.
+				MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key:      "!",
+					Operator: metav1.LabelSelectorOpExists,
+				}},
+			},
+		},
+	}
+	store.ProfileSet(bad)
+
+	if _, ok := store.ProfileGet(types.NamespacedName{Name: "bad", Namespace: "default"}); ok {
+		t.Fatal("expected invalid-selector profile to be skipped on initial Set, but it was stored")
+	}
+	if got := store.FindProfilesForLabels("default", map[string]string{"app": "ai-agent"}); len(got) != 0 {
+		t.Fatalf("expected 0 matched profiles, got %d", len(got))
+	}
+}
+
+func TestProfileSet_InvalidSelectorOnUpdateRemovesEntry(t *testing.T) {
+	// Updating a previously valid profile with an invalid selector must
+	// remove it rather than leaving the stale prior version live in the
+	// store. This keeps the store aligned with the latest authoring intent.
+	store := NewStore()
+	nn := types.NamespacedName{Name: "p", Namespace: "default"}
+
+	good := newTestProfile("p", "default", map[string]string{"app": "ai-agent"})
+	store.ProfileSet(good)
+	if _, ok := store.ProfileGet(nn); !ok {
+		t.Fatal("precondition: expected good profile in store")
+	}
+
+	bad := &v1alpha1.SecurityProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "default"},
+		Spec: v1alpha1.SecurityProfileSpec{
+			Selector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key:      "!",
+					Operator: metav1.LabelSelectorOpExists,
+				}},
+			},
+		},
+	}
+	store.ProfileSet(bad)
+
+	if _, ok := store.ProfileGet(nn); ok {
+		t.Fatal("expected stale entry to be removed when update brings invalid selector")
+	}
+	if got := store.FindProfilesForLabels("default", map[string]string{"app": "ai-agent"}); len(got) != 0 {
+		t.Fatalf("expected 0 matched profiles after invalid update, got %d", len(got))
+	}
+}
+
+func TestProfileSet_NilIsNoop(t *testing.T) {
+	store := NewStore()
+	store.ProfileSet(nil)
+	if len(store.ProfileList()) != 0 {
+		t.Fatalf("expected nil ProfileSet to be a noop, got %d profiles", len(store.ProfileList()))
+	}
+}
+
+func TestProfileDelete_NonExistentIsNoop(t *testing.T) {
+	store := NewStore()
+	store.ProfileDelete(types.NamespacedName{Name: "ghost", Namespace: "default"})
+	if len(store.ProfileList()) != 0 {
+		t.Fatalf("expected delete of missing key to be a noop, got %d profiles", len(store.ProfileList()))
 	}
 }
 

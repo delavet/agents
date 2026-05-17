@@ -135,9 +135,22 @@ func (s *configStore) ProfileSet(profile *v1alpha1.SecurityProfile) {
 
 	selector, err := metav1.LabelSelectorAsSelector(&profile.Spec.Selector)
 	if err != nil {
+		// An invalid selector cannot match any pod. Drop any prior version
+		// so the store reflects the latest authoring intent rather than
+		// silently serving a stale spec the user has since edited.
 		ctrllog.Log.WithName("configstore").Error(err,
-			"SecurityProfile has invalid selector; skipping",
+			"SecurityProfile has invalid selector; removing from store",
 			"profile", nn.String())
+		if _, existed := old.byKey[nn]; !existed {
+			return
+		}
+		newByKey := make(map[types.NamespacedName]*model.SecurityProfile, len(old.byKey))
+		for k, v := range old.byKey {
+			if k != nn {
+				newByKey[k] = v
+			}
+		}
+		s.snapshot.Store(buildSnapshot(newByKey))
 		return
 	}
 
@@ -183,7 +196,15 @@ func buildSnapshot(byKey map[types.NamespacedName]*model.SecurityProfile) *profi
 
 	for _, profiles := range byNamespace {
 		sort.Slice(profiles, func(i, j int) bool {
-			return profiles[i].Profile.CreationTimestamp.Before(&profiles[j].Profile.CreationTimestamp)
+			ci := profiles[i].Profile.CreationTimestamp
+			cj := profiles[j].Profile.CreationTimestamp
+			if !ci.Equal(&cj) {
+				return ci.Before(&cj)
+			}
+			// Tie-break on name so ordering stays deterministic when
+			// CreationTimestamps collide (common in tests and within the
+			// same reconcile second in production).
+			return profiles[i].Profile.Name < profiles[j].Profile.Name
 		})
 	}
 	return &profileSnapshot{
