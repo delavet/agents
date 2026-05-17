@@ -41,6 +41,7 @@ import (
 	"github.com/openkruise/agents/pkg/traffix-extension/framework/tokencache"
 	"github.com/openkruise/agents/pkg/traffix-extension/plugins"
 	"github.com/openkruise/agents/pkg/traffix-extension/plugins/block"
+	"github.com/openkruise/agents/pkg/traffix-extension/plugins/bypass"
 	"github.com/openkruise/agents/pkg/traffix-extension/plugins/tokeninjection"
 	"github.com/openkruise/agents/pkg/traffix-extension/runnable"
 	runserver "github.com/openkruise/agents/pkg/traffix-extension/server"
@@ -138,9 +139,12 @@ func run() error {
 	credClient := credential.NewClientWithCache(tokenCache)
 	serverRunner.CredClient = credClient
 
-	// Register request-handling plugins. Order matters: Block runs first so a
-	// terminal Block action short-circuits before any token mutation.
+	// Register request-handling plugins. Order matters: Bypass runs first so
+	// a matching Bypass rule short-circuits the chain unmodified before any
+	// other plugin can act; Block runs next so a terminal Block action
+	// short-circuits before any token mutation.
 	serverRunner.Plugins = []plugins.Plugin{
+		bypass.New(),
 		block.New(),
 		tokeninjection.New(credClient),
 	}

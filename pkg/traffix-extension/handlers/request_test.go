@@ -33,6 +33,7 @@ import (
 	"github.com/openkruise/agents/pkg/traffix-extension/framework/credential"
 	"github.com/openkruise/agents/pkg/traffix-extension/plugins"
 	"github.com/openkruise/agents/pkg/traffix-extension/plugins/block"
+	"github.com/openkruise/agents/pkg/traffix-extension/plugins/bypass"
 )
 
 func TestExtractExtProcAttrs_NestedStructure(t *testing.T) {
@@ -367,6 +368,17 @@ func newServerWithBlockOnly(t *testing.T, store configstore.Store) *Server {
 	})
 }
 
+// newServerWithBypassFirst wires Bypass ahead of Block so the orchestrator
+// reflects production plugin order. Token-injection is intentionally omitted
+// to avoid plumbing a credential client.
+func newServerWithBypassFirst(t *testing.T, store configstore.Store) *Server {
+	t.Helper()
+	return NewServer(false, ServerDeps{
+		ConfigStore: store,
+		Plugins:     []plugins.Plugin{bypass.New(), block.New()},
+	})
+}
+
 func TestHandleRequestHeaders_BlockMatched(t *testing.T) {
 	store := configstore.NewStore()
 	body := `{"error":"forbidden"}`
@@ -587,15 +599,14 @@ func TestHandleRequestHeaders_MultipleProfiles_AlphabeticalOrder(t *testing.T) {
 
 // TestHandleRequestHeaders_UnimplementedActionWarns verifies the orchestrator
 // passes through and logs (no error) when a rule declares an action that no
-// plugin handles (e.g. Bypass / Forwarding / IdentityInjection).
+// plugin handles (e.g. Forwarding / IdentityInjection).
 func TestHandleRequestHeaders_UnimplementedActionWarns(t *testing.T) {
 	store := configstore.NewStore()
 	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
 		{
-			Name:  "bypass-rule",
+			Name:  "unimplemented-rule",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
 			Actions: &v1alpha1.SecurityRuleActions{
-				Bypass:            true,
 				Forwarding:        &v1alpha1.ForwardingAction{TargetHost: "x"},
 				IdentityInjection: &v1alpha1.IdentityInjectionAction{},
 				SecurityCheck:     &v1alpha1.SecurityCheckAction{},
@@ -640,7 +651,6 @@ func TestWarnUnimplementedActions_CoversAllBranches(t *testing.T) {
 	warnUnimplementedActions(logger, profile, &v1alpha1.SecurityRule{
 		Name: "r",
 		Actions: &v1alpha1.SecurityRuleActions{
-			Bypass:            true,
 			Forwarding:        &v1alpha1.ForwardingAction{},
 			IdentityInjection: &v1alpha1.IdentityInjectionAction{},
 			SecurityCheck:     &v1alpha1.SecurityCheckAction{},
@@ -755,5 +765,183 @@ func TestHandleRequestHeaders_BlockFiresWithoutSandboxToken(t *testing.T) {
 	}
 	if string(immediate.ImmediateResponse.Body) != "nope" {
 		t.Errorf("body: want %q, got %q", "nope", immediate.ImmediateResponse.Body)
+	}
+}
+
+// TestHandleRequestHeaders_BypassMatched_ForwardsUnmodified verifies a Bypass
+// rule short-circuits the chain with a passthrough response (NOT an
+// ImmediateResponse, which would terminate the request).
+func TestHandleRequestHeaders_BypassMatched_ForwardsUnmodified(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name: "trust-internal",
+			Match: []v1alpha1.RuleMatch{{
+				Domains: []string{"internal.local"},
+			}},
+			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+		},
+	}))
+
+	srv := newServerWithBypassFirst(t, store)
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("internal.local", "/anything", "GET"),
+		makeAttrsWithLabels("default", "pod-x", testLabelsB64),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(resps))
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_ImmediateResponse); ok {
+		t.Fatal("Bypass must NOT produce an ImmediateResponse")
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_RequestHeaders); !ok {
+		t.Fatalf("expected pass-through RequestHeaders, got %T", resps[0].Response)
+	}
+}
+
+// TestHandleRequestHeaders_BypassNotMatched_FallsThroughToBlock verifies the
+// bypass plugin only short-circuits when the rule explicitly opts in. A rule
+// that has Block but no Bypass must still produce the Block response.
+func TestHandleRequestHeaders_BypassNotMatched_FallsThroughToBlock(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name:  "block-only",
+			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: &v1alpha1.SecurityRuleActions{
+				Block: &v1alpha1.BlockAction{StatusCode: 403},
+			},
+		},
+	}))
+
+	srv := newServerWithBypassFirst(t, store)
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("api.example.com", "/x", "GET"),
+		makeAttrsWithLabels("default", "pod-x", testLabelsB64),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	immediate, ok := resps[0].Response.(*extProcPb.ProcessingResponse_ImmediateResponse)
+	if !ok {
+		t.Fatalf("expected ImmediateResponse from block, got %T", resps[0].Response)
+	}
+	if immediate.ImmediateResponse.Status.Code != envoyTypeV3.StatusCode(403) {
+		t.Errorf("status: want 403, got %v", immediate.ImmediateResponse.Status.Code)
+	}
+}
+
+// TestHandleRequestHeaders_BypassBeatsBlockSameRule verifies that when a
+// single rule pathologically declares both Bypass=true and a Block action,
+// Bypass wins because it is registered ahead of Block in the plugin chain.
+func TestHandleRequestHeaders_BypassBeatsBlockSameRule(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name:  "bypass-and-block",
+			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: &v1alpha1.SecurityRuleActions{
+				Bypass: true,
+				Block:  &v1alpha1.BlockAction{StatusCode: 403},
+			},
+		},
+	}))
+
+	srv := newServerWithBypassFirst(t, store)
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("api.example.com", "/x", "GET"),
+		makeAttrsWithLabels("default", "pod-x", testLabelsB64),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_ImmediateResponse); ok {
+		t.Fatal("Bypass must outrank Block — got an ImmediateResponse")
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_RequestHeaders); !ok {
+		t.Fatalf("expected pass-through, got %T", resps[0].Response)
+	}
+}
+
+// TestHandleRequestHeaders_BypassRuleSkipsLaterBlockRule verifies cross-rule
+// short-circuit semantics: an earlier Bypass rule prevents a later Block rule
+// from running, even though the Block rule would otherwise match.
+func TestHandleRequestHeaders_BypassRuleSkipsLaterBlockRule(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name: "bypass-internal-first",
+			Match: []v1alpha1.RuleMatch{{
+				Domains: []string{"internal.local"},
+			}},
+			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+		},
+		{
+			Name:  "block-everything-else",
+			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: &v1alpha1.SecurityRuleActions{
+				Block: &v1alpha1.BlockAction{StatusCode: 403},
+			},
+		},
+	}))
+
+	srv := newServerWithBypassFirst(t, store)
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("internal.local", "/anything", "GET"),
+		makeAttrsWithLabels("default", "pod-x", testLabelsB64),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_ImmediateResponse); ok {
+		t.Fatal("first-rule Bypass must skip the later Block rule")
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_RequestHeaders); !ok {
+		t.Fatalf("expected pass-through, got %T", resps[0].Response)
+	}
+}
+
+// TestHandleRequestHeaders_BlockRuleBeatsLaterBypassRule sanity-checks the
+// reverse order: a Block rule that matches first must short-circuit before
+// the orchestrator ever reaches a later Bypass rule.
+func TestHandleRequestHeaders_BlockRuleBeatsLaterBypassRule(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name:  "block-first",
+			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: &v1alpha1.SecurityRuleActions{
+				Block: &v1alpha1.BlockAction{StatusCode: 451},
+			},
+		},
+		{
+			Name:    "bypass-second",
+			Match:   []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+		},
+	}))
+
+	srv := newServerWithBypassFirst(t, store)
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("api.example.com", "/x", "GET"),
+		makeAttrsWithLabels("default", "pod-x", testLabelsB64),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	immediate, ok := resps[0].Response.(*extProcPb.ProcessingResponse_ImmediateResponse)
+	if !ok {
+		t.Fatalf("expected ImmediateResponse from earlier Block rule, got %T", resps[0].Response)
+	}
+	if immediate.ImmediateResponse.Status.Code != envoyTypeV3.StatusCode(451) {
+		t.Errorf("status: want 451, got %v", immediate.ImmediateResponse.Status.Code)
 	}
 }

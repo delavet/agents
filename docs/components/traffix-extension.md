@@ -162,16 +162,24 @@ spec:
 The handler walks the rule chain in order across all profiles matching the
 Pod's labels. For each rule whose `match` clause matches the request:
 
-1. If the rule has a `block` action — return an Envoy `ImmediateResponse`
-   with the configured status code and body. **Terminal**; no further
-   rules are evaluated. Does not require a sandbox token.
-2. Otherwise, if the rule has a `tokenTransformation` action and no Block
+1. If the rule has `bypass: true` — forward the request unmodified and
+   stop walking. **Terminal**; no further rules or plugins run. Does not
+   require a sandbox token. Useful for trusted internal domains where
+   subsequent action plugins (token injection, future security checks)
+   should explicitly NOT execute.
+2. Otherwise, if the rule has a `block` action — return an Envoy
+   `ImmediateResponse` with the configured status code and body.
+   **Terminal**; no further rules are evaluated. Does not require a
+   sandbox token.
+3. Otherwise, if the rule has a `tokenTransformation` action and no Block
    has fired yet, the rule is recorded and scanning continues so a later
    `block` rule can still win.
 
-After the scan: if a Block fired, the request is rejected. If only a
-`tokenTransformation` rule matched, token injection runs against that
-rule. Otherwise the request passes through unmodified.
+After the scan: if Bypass fired, the request flows through unmodified
+(any earlier-accumulated mutations are discarded). If a Block fired, the
+request is rejected. If only a `tokenTransformation` rule matched, token
+injection runs against that rule. Otherwise the request passes through
+unmodified.
 
 Notes on `block`:
 
@@ -218,6 +226,7 @@ pkg/traffix-extension/
     logging/                                Log level constants
   plugins/                                Independent request-handling plugins
     plugin.go                               Plugin interface + Result/RequestContext
+    bypass/                                 Terminal Bypass action plugin (passthrough)
     block/                                  Terminal Block action plugin
     tokeninjection/                         TokenTransformation injection plugin
   handlers/                               Envoy ext-proc handler (orchestrator)

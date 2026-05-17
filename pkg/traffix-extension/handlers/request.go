@@ -331,17 +331,14 @@ func extractHeaderMap(headers *extProcPb.HttpHeaders) map[string]string {
 // declared on a matched rule but does not yet have a corresponding plugin
 // implementation. The request is still passed through; the warning makes
 // it visible that the policy author wrote a rule the data plane cannot
-// honor (Bypass, Forwarding, IdentityInjection, SecurityCheck, Mirroring,
-// RateLimit are reserved for future plugins).
+// honor (Forwarding, IdentityInjection, SecurityCheck, Mirroring, RateLimit
+// are reserved for future plugins).
 func warnUnimplementedActions(logger logr.Logger, profile *v1alpha1.SecurityProfile, rule *v1alpha1.SecurityRule) {
 	a := rule.Actions
 	if a == nil {
 		return
 	}
 	var unimplemented []string
-	if a.Bypass {
-		unimplemented = append(unimplemented, "bypass")
-	}
 	if a.Forwarding != nil {
 		unimplemented = append(unimplemented, "forwarding")
 	}
