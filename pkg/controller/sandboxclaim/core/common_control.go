@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openkruise/agents/pkg/sandbox-manager/consts"
 	"golang.org/x/time/rate"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -38,6 +37,7 @@ import (
 	"github.com/openkruise/agents/pkg/controller/sandboxset"
 	"github.com/openkruise/agents/pkg/features"
 	"github.com/openkruise/agents/pkg/sandbox-manager/config"
+	"github.com/openkruise/agents/pkg/sandbox-manager/consts"
 	"github.com/openkruise/agents/pkg/sandbox-manager/infra"
 	"github.com/openkruise/agents/pkg/sandbox-manager/infra/sandboxcr"
 	"github.com/openkruise/agents/pkg/utils"
@@ -339,12 +339,23 @@ func (c *commonControl) buildClaimOptions(ctx context.Context, claim *agentsv1al
 			}
 		}
 		// Check condition B: initContainer named "runtime"
-		// TODO support sandboxTemplateRef
-		if !hasAgentRuntime && sandboxSet.Spec.Template != nil {
-			for _, c := range sandboxSet.Spec.Template.Spec.InitContainers {
-				if c.Name == common.RuntimeInitContainerName {
-					hasAgentRuntime = true
-					break
+		if !hasAgentRuntime {
+			podTemplateSpec, err := stateutils.GetTemplateSpec(ctx, c.Client, sandboxSet.Namespace, &sandboxSet.Spec.EmbeddedSandboxTemplate)
+			if err != nil {
+				if sandboxSet.Spec.TemplateRef != nil {
+					logger.Error(err, "failed to get sandbox template for checking agent runtime", "template", sandboxSet.Spec.TemplateRef.Name)
+				} else {
+					logger.Error(err, "failed to get sandbox template for checking agent runtime")
+				}
+				return opts, err
+			}
+
+			if podTemplateSpec != nil {
+				for _, container := range podTemplateSpec.Spec.InitContainers {
+					if container.Name == common.RuntimeInitContainerName {
+						hasAgentRuntime = true
+						break
+					}
 				}
 			}
 		}
