@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha1 "github.com/openkruise/agents/api/v1alpha1"
@@ -285,7 +286,7 @@ func TestCompileRuleMatch_AndMatches(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rm := CompileRuleMatch(tc.raw)
+			rm := CompileRuleMatch(logr.Discard(), tc.raw)
 			if got := rm.Matches(&tc.req); got != tc.want {
 				t.Errorf("Matches() = %v, want %v", got, tc.want)
 			}
@@ -298,8 +299,8 @@ func TestCompileRuleMatch_AndMatches(t *testing.T) {
 func TestSecurityRule_MatchesRequest_OrsMatchClauses(t *testing.T) {
 	cr := SecurityRule{
 		Matches: []RuleMatch{
-			CompileRuleMatch(v1alpha1.RuleMatch{Domains: []string{"a.com"}}),
-			CompileRuleMatch(v1alpha1.RuleMatch{Domains: []string{"b.com"}}),
+			CompileRuleMatch(logr.Discard(), v1alpha1.RuleMatch{Domains: []string{"a.com"}}),
+			CompileRuleMatch(logr.Discard(), v1alpha1.RuleMatch{Domains: []string{"b.com"}}),
 		},
 	}
 	if !cr.MatchesRequest(&RequestInfo{Host: "b.com"}) {
@@ -307,6 +308,50 @@ func TestSecurityRule_MatchesRequest_OrsMatchClauses(t *testing.T) {
 	}
 	if cr.MatchesRequest(&RequestInfo{Host: "c.com"}) {
 		t.Errorf("c.com should not match either clause")
+	}
+}
+
+// TestCompileRuleMatch_InvalidRegex verifies that invalid regex patterns in
+// path / header / queryParam matchers do not panic and produce nil Re,
+// causing the matcher to fail closed at request time.
+func TestCompileRuleMatch_InvalidRegex(t *testing.T) {
+	rm := CompileRuleMatch(logr.Discard(), v1alpha1.RuleMatch{
+		Paths: []v1alpha1.PathMatch{
+			{Type: v1alpha1.PathMatchTypeRegex, Value: "([invalid"},
+		},
+		Headers: []v1alpha1.HeaderMatch{
+			{Name: "X-K", Type: v1alpha1.StringMatchTypeRegex, Value: "([invalid"},
+		},
+		QueryParams: []v1alpha1.QueryParamMatch{
+			{Name: "q", Type: v1alpha1.StringMatchTypeRegex, Value: "([invalid"},
+		},
+	})
+	if len(rm.Paths) != 1 || rm.Paths[0].Re != nil {
+		t.Errorf("expected nil Re for invalid path regex, got %+v", rm.Paths)
+	}
+	if len(rm.Headers) != 1 || rm.Headers[0].Re != nil {
+		t.Errorf("expected nil Re for invalid header regex, got %+v", rm.Headers)
+	}
+	if len(rm.QueryParams) != 1 || rm.QueryParams[0].Re != nil {
+		t.Errorf("expected nil Re for invalid queryParam regex, got %+v", rm.QueryParams)
+	}
+
+	// And the matchers fail closed: a request that would otherwise match
+	// must be rejected.
+	req := RequestInfo{
+		Host:    "any.example",
+		Path:    "anything",
+		Headers: map[string]string{"x-k": "anything"},
+		Query:   url.Values{"q": {"anything"}},
+	}
+	if rm.matchPath(req.Path) {
+		t.Errorf("invalid path regex should fail closed")
+	}
+	if rm.matchHeaders(req.Headers) {
+		t.Errorf("invalid header regex should fail closed")
+	}
+	if rm.matchQueryParams(req.Query) {
+		t.Errorf("invalid queryParam regex should fail closed")
 	}
 }
 
@@ -319,7 +364,7 @@ func TestNewSecurityProfile(t *testing.T) {
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}},
 		},
 	}
-	if sp, err := NewSecurityProfile(good); err != nil || sp == nil {
+	if sp, err := NewSecurityProfile(logr.Discard(), good); err != nil || sp == nil {
 		t.Fatalf("good profile: err=%v sp=%v", err, sp)
 	}
 
@@ -330,7 +375,7 @@ func TestNewSecurityProfile(t *testing.T) {
 			}}},
 		},
 	}
-	if sp, err := NewSecurityProfile(bad); err == nil || sp != nil {
+	if sp, err := NewSecurityProfile(logr.Discard(), bad); err == nil || sp != nil {
 		t.Fatalf("bad selector: expected error, got sp=%v err=%v", sp, err)
 	}
 }

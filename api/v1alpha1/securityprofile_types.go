@@ -207,6 +207,8 @@ type SecurityRuleActions struct {
 type SecurityRule struct {
 	// Name uniquely identifies the rule within the profile. Used in
 	// metrics, events, and generated xDS resource names.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	Name string `json:"name"`
 	// Match lists match conditions. Multiple entries are ORed.
 	// +kubebuilder:validation:MinItems=1
@@ -215,7 +217,7 @@ type SecurityRule struct {
 	// data plane executes populated actions in a deterministic order; each
 	// action runs at most once. Terminal actions (Block, Bypass)
 	// short-circuit the rule chain.
-	Actions *SecurityRuleActions `json:"actions"`
+	Actions SecurityRuleActions `json:"actions"`
 }
 
 // SecurityProfileSpec describes an L7 security profile applied to the egress

@@ -51,7 +51,7 @@ func (p *Plugin) Name() string { return PluginName }
 // OnRequestHeaders returns ActionImmediate when the rule has a BlockAction,
 // ActionContinue otherwise.
 func (p *Plugin) OnRequestHeaders(ctx context.Context, rctx *plugins.RequestContext, rule *model.SecurityRule) (plugins.Result, error) {
-	if rule.Actions == nil || rule.Actions.Block == nil {
+	if rule.Actions.Block == nil {
 		return plugins.ContinueResult(), nil
 	}
 

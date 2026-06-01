@@ -116,7 +116,7 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, headers *extProcPb.Ht
 
 	// Step 3: parse request info.
 	reqHeaders := extractHeaderMap(headers)
-	reqInfo = matcher.ParseRequestInfo(reqHeaders)
+	reqInfo = matcher.ParseRequestInfo(ctx, reqHeaders)
 	podNN = types.NamespacedName{Namespace: podNamespace, Name: podName}
 
 	// Single VERBOSE summary line per request — pod identity, request identity,
@@ -151,7 +151,7 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, headers *extProcPb.Ht
 		rctx.Profile = profile
 		for i := range profile.SecurityRules {
 			cr := &profile.SecurityRules[i]
-			if cr.Actions == nil || !cr.MatchesRequest(&reqInfo) {
+			if !cr.MatchesRequest(&reqInfo) {
 				continue
 			}
 			for _, p := range s.plugins {

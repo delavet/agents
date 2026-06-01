@@ -19,17 +19,17 @@ limitations under the License.
 package matcher
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 
-	"github.com/openkruise/agents/pkg/traffix-extension/model"
-)
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
-// RequestInfo is an alias for model.RequestInfo, kept for backward compatibility
-// with existing callers of this package.
-type RequestInfo = model.RequestInfo
+	"github.com/openkruise/agents/pkg/traffix-extension/model"
+	logutil "github.com/openkruise/agents/pkg/traffix-extension/util/logging"
+)
 
 // splitHostPort extracts (host, port) from a request authority. IPv6
 // authorities in bracket form (e.g. "[::1]:8080") are returned without the
@@ -79,7 +79,7 @@ func splitPathAndQuery(rawPath string) (string, string) {
 	return rawPath, ""
 }
 
-// ParseRequestInfo extracts RequestInfo from Envoy header values.
+// ParseRequestInfo extracts model.RequestInfo from Envoy header values.
 // Envoy sends pseudo-headers (:method, :path, :authority, :scheme) and the
 // Host header. :authority is the gRPC/HTTP2 equivalent of Host.
 //
@@ -89,8 +89,11 @@ func splitPathAndQuery(rawPath string) (string, string) {
 //
 // Port inference: when :authority does not include an explicit port, the
 // default port is taken from :scheme — http=80, https=443.
-func ParseRequestInfo(headers map[string]string) RequestInfo {
-	info := RequestInfo{Headers: headers}
+//
+// Query-string parse errors are logged at DEBUG via the logger in ctx (the
+// returned Query still holds whatever url.ParseQuery managed to extract).
+func ParseRequestInfo(ctx context.Context, headers map[string]string) model.RequestInfo {
+	info := model.RequestInfo{Headers: headers}
 
 	if auth, ok := headers[":authority"]; ok && auth != "" {
 		info.Host, info.Port = splitHostPort(auth)
@@ -106,7 +109,13 @@ func ParseRequestInfo(headers map[string]string) RequestInfo {
 		var rawQuery string
 		info.Path, rawQuery = splitPathAndQuery(path)
 		if rawQuery != "" {
-			info.Query, _ = url.ParseQuery(rawQuery)
+			var err error
+			info.Query, err = url.ParseQuery(rawQuery)
+			if err != nil {
+				log.FromContext(ctx).V(logutil.DEBUG).Info(
+					"Failed to parse request query string; using partial result",
+					"rawQuery", rawQuery, "error", err.Error())
+			}
 		}
 	}
 

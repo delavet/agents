@@ -300,7 +300,7 @@ func TestHandleRequestHeaders_BlockMatched(t *testing.T) {
 				Paths:   []v1alpha1.PathMatch{{Type: v1alpha1.PathMatchTypePrefix, Value: "/admin"}},
 				Methods: []string{"GET"},
 			}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 451, Body: strPtr(body)},
 			},
 		},
@@ -340,7 +340,7 @@ func TestHandleRequestHeaders_BlockNotMatched_FallsThrough(t *testing.T) {
 				Paths:   []v1alpha1.PathMatch{{Type: v1alpha1.PathMatchTypePrefix, Value: "/admin"}},
 				Methods: []string{"GET"},
 			}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 403},
 			},
 		},
@@ -386,15 +386,16 @@ func TestHandleRequestHeaders_NoProfileMatch(t *testing.T) {
 	}
 }
 
-// TestHandleRequestHeaders_RuleWithNilActions covers the rule-skip branch when
-// a rule matches but its Actions are nil.
-func TestHandleRequestHeaders_RuleWithNilActions(t *testing.T) {
+// TestHandleRequestHeaders_RuleWithEmptyActions covers the passthrough path
+// when a rule matches but its Actions struct is zero-valued (no Block, no
+// Bypass): every plugin returns Continue and the request falls through.
+func TestHandleRequestHeaders_RuleWithEmptyActions(t *testing.T) {
 	store := configstore.NewStore()
 	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
 		{
 			Name:    "no-actions",
 			Match:   []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: nil,
+			Actions: v1alpha1.SecurityRuleActions{},
 		},
 	}))
 	srv := newServerWithBlockOnly(t, store)
@@ -407,7 +408,7 @@ func TestHandleRequestHeaders_RuleWithNilActions(t *testing.T) {
 		t.Fatalf("unexpected: %v", err)
 	}
 	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_RequestHeaders); !ok {
-		t.Fatalf("expected pass-through for nil actions, got %T", resps[0].Response)
+		t.Fatalf("expected pass-through for empty actions, got %T", resps[0].Response)
 	}
 }
 
@@ -421,7 +422,7 @@ func TestHandleRequestHeaders_MultipleProfiles_AlphabeticalOrder(t *testing.T) {
 		{
 			Name:  "block-401",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 401},
 			},
 		},
@@ -430,7 +431,7 @@ func TestHandleRequestHeaders_MultipleProfiles_AlphabeticalOrder(t *testing.T) {
 		{
 			Name:  "block-403",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 403},
 			},
 		},
@@ -485,7 +486,7 @@ func TestHandleRequestHeaders_BypassMatched_ForwardsUnmodified(t *testing.T) {
 			Match: []v1alpha1.RuleMatch{{
 				Domains: []string{"internal.local"},
 			}},
-			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+			Actions: v1alpha1.SecurityRuleActions{Bypass: true},
 		},
 	}))
 
@@ -518,7 +519,7 @@ func TestHandleRequestHeaders_BypassNotMatched_FallsThroughToBlock(t *testing.T)
 		{
 			Name:  "block-only",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 403},
 			},
 		},
@@ -551,7 +552,7 @@ func TestHandleRequestHeaders_BypassBeatsBlockSameRule(t *testing.T) {
 		{
 			Name:  "bypass-and-block",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Bypass: true,
 				Block:  &v1alpha1.BlockAction{StatusCode: 403},
 			},
@@ -586,12 +587,12 @@ func TestHandleRequestHeaders_BypassRuleSkipsLaterBlockRule(t *testing.T) {
 			Match: []v1alpha1.RuleMatch{{
 				Domains: []string{"internal.local"},
 			}},
-			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+			Actions: v1alpha1.SecurityRuleActions{Bypass: true},
 		},
 		{
 			Name:  "block-everything-else",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 403},
 			},
 		},
@@ -623,14 +624,14 @@ func TestHandleRequestHeaders_BlockRuleBeatsLaterBypassRule(t *testing.T) {
 		{
 			Name:  "block-first",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 451},
 			},
 		},
 		{
 			Name:    "bypass-second",
 			Match:   []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
-			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+			Actions: v1alpha1.SecurityRuleActions{Bypass: true},
 		},
 	}))
 
@@ -697,7 +698,7 @@ func TestHandleRequestHeaders_AuditEntry_BypassMatched(t *testing.T) {
 		{
 			Name:    "trust-internal",
 			Match:   []v1alpha1.RuleMatch{{Domains: []string{"internal.local"}}},
-			Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+			Actions: v1alpha1.SecurityRuleActions{Bypass: true},
 		},
 	}))
 
@@ -731,7 +732,7 @@ func TestHandleRequestHeaders_AuditEntry_BlockMatched(t *testing.T) {
 		{
 			Name:  "block-admin",
 			Match: []v1alpha1.RuleMatch{{Domains: []string{"*"}, Paths: []v1alpha1.PathMatch{{Type: v1alpha1.PathMatchTypePrefix, Value: "/admin"}}}},
-			Actions: &v1alpha1.SecurityRuleActions{
+			Actions: v1alpha1.SecurityRuleActions{
 				Block: &v1alpha1.BlockAction{StatusCode: 403},
 			},
 		},

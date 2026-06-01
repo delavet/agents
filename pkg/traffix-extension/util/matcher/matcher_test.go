@@ -17,12 +17,13 @@ limitations under the License.
 package matcher
 
 import (
+	"context"
 	"testing"
 )
 
 func TestParseRequestInfo(t *testing.T) {
 	h1 := map[string]string{":authority": "api.openai.com", ":path": "/v1/chat", ":method": "POST"}
-	info1 := ParseRequestInfo(h1)
+	info1 := ParseRequestInfo(context.Background(),h1)
 	if info1.Host != "api.openai.com" {
 		t.Errorf("expected host 'api.openai.com', got %q", info1.Host)
 	}
@@ -34,7 +35,7 @@ func TestParseRequestInfo(t *testing.T) {
 	}
 
 	h2 := map[string]string{"host": "example.com", ":path": "/api"}
-	info2 := ParseRequestInfo(h2)
+	info2 := ParseRequestInfo(context.Background(),h2)
 	if info2.Host != "example.com" {
 		t.Errorf("expected host 'example.com', got %q", info2.Host)
 	}
@@ -96,7 +97,7 @@ func TestSplitPathAndQuery(t *testing.T) {
 // TestParseRequestInfo_SplitsHostAndPath verifies the front-door parser splits
 // ":authority" into Host+Port and ":path" into Path+Query.
 func TestParseRequestInfo_SplitsHostAndPath(t *testing.T) {
-	info := ParseRequestInfo(map[string]string{
+	info := ParseRequestInfo(context.Background(),map[string]string{
 		":authority": "api.example.com:8443",
 		":path":      "/v1/chat?x=1&y=2",
 		":method":    "POST",
@@ -115,7 +116,7 @@ func TestParseRequestInfo_SplitsHostAndPath(t *testing.T) {
 	}
 
 	// Falls back to "host" header when :authority is absent.
-	info2 := ParseRequestInfo(map[string]string{
+	info2 := ParseRequestInfo(context.Background(),map[string]string{
 		"host":    "fallback.example.com:1234",
 		":path":   "/p",
 		":method": "GET",
@@ -128,9 +129,23 @@ func TestParseRequestInfo_SplitsHostAndPath(t *testing.T) {
 	}
 
 	// Empty headers map yields zero RequestInfo (with non-nil Headers map).
-	info3 := ParseRequestInfo(map[string]string{})
+	info3 := ParseRequestInfo(context.Background(),map[string]string{})
 	if info3.Host != "" || info3.Path != "" || info3.Method != "" || info3.Port != 0 {
 		t.Errorf("expected empty info, got %+v", info3)
+	}
+}
+
+// TestParseRequestInfo_MalformedQuery verifies that an unparseable query
+// string does not panic; the DEBUG log branch is exercised but the returned
+// Query may be empty or partial.
+func TestParseRequestInfo_MalformedQuery(t *testing.T) {
+	info := ParseRequestInfo(context.Background(), map[string]string{
+		":authority": "api.example.com",
+		":path":      "/v1/chat?%zz",
+		":method":    "GET",
+	})
+	if info.Path != "/v1/chat" {
+		t.Errorf("expected path '/v1/chat', got %q", info.Path)
 	}
 }
 
@@ -160,7 +175,7 @@ func TestParseRequestInfo_InfersPortFromScheme(t *testing.T) {
 			if tt.scheme != "" {
 				h[":scheme"] = tt.scheme
 			}
-			info := ParseRequestInfo(h)
+			info := ParseRequestInfo(context.Background(),h)
 			if info.Port != tt.wantPort {
 				t.Errorf("got Port=%d, want %d", info.Port, tt.wantPort)
 			}

@@ -286,6 +286,8 @@ spec:
                       description: |-
                         Name uniquely identifies the rule within the profile. Used in
                         metrics, events, and generated xDS resource names.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                   required:
                   - actions

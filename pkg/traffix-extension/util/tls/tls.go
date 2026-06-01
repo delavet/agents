@@ -26,13 +26,11 @@ import (
 	"fmt"
 	"math/big"
 	"time"
-
-	"github.com/go-logr/logr"
 )
 
 // CreateSelfSignedTLSCertificate creates a self-signed cert the server can
 // use to serve TLS.
-func CreateSelfSignedTLSCertificate(logger logr.Logger) (tls.Certificate, error) {
+func CreateSelfSignedTLSCertificate() (tls.Certificate, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {

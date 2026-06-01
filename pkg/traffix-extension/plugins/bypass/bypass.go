@@ -53,7 +53,7 @@ func (p *Plugin) Name() string { return PluginName }
 // The plugin is registered ahead of every other plugin so a matching Bypass
 // rule wins over Block / TokenInjection / etc. within the same rule chain.
 func (p *Plugin) OnRequestHeaders(ctx context.Context, rctx *plugins.RequestContext, rule *model.SecurityRule) (plugins.Result, error) {
-	if rule.Actions == nil || !rule.Actions.Bypass {
+	if !rule.Actions.Bypass {
 		return plugins.ContinueResult(), nil
 	}
 

@@ -48,7 +48,7 @@ var (
 	debounceInterval = env.Register("SECURITY_PROFILE_DEBOUNCE_TIME", 200*time.Millisecond,
 		"Time to debounce profile events before applying updates").Get()
 	debounceMaxInterval = env.Register("SECURITY_PROFILE_DEBOUNCE_TIME_MAX", 1*time.Second,
-		"Max ime to debounce profile events before applying updates").Get()
+		"Max time to debounce profile events before applying updates").Get()
 )
 
 // Store is a thread-safe in-memory store for SecurityProfiles.
@@ -271,7 +271,7 @@ func (s *configStore) profileBatchApply(log logr.Logger, events map[types.Namesp
 		if ev.deleted {
 			delete(newByKey, ev.key)
 		} else {
-			sp, err := model.NewSecurityProfile(ev.profile)
+			sp, err := model.NewSecurityProfile(log, ev.profile)
 			if err != nil {
 				log.Error(err, "SecurityProfile has invalid selector; skipping", "profile", ev.key)
 				continue
@@ -294,12 +294,13 @@ func (s *configStore) ProfileSet(profile *v1alpha1.SecurityProfile) {
 	old := s.snapshot.Load()
 	nn := types.NamespacedName{Name: profile.Name, Namespace: profile.Namespace}
 
-	sp, err := model.NewSecurityProfile(profile)
+	log := ctrllog.Log.WithName("configstore")
+	sp, err := model.NewSecurityProfile(log, profile)
 	if err != nil {
 		// An invalid selector cannot match any pod. Drop any prior version
 		// so the store reflects the latest authoring intent rather than
 		// silently serving a stale spec the user has since edited.
-		ctrllog.Log.WithName("configstore").Error(err,
+		log.Error(err,
 			"SecurityProfile has invalid selector; removing from store",
 			"profile", nn.String())
 		if _, existed := old.byKey[nn]; !existed {

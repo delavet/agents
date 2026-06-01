@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-logr/logr"
 	v1alpha1 "github.com/openkruise/agents/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -68,9 +69,9 @@ type RuleMatch struct {
 }
 
 // CompileRuleMatch compiles a v1alpha1.RuleMatch into a model.RuleMatch with
-// pre-compiled regexps. Invalid regex patterns are compiled as nil (fail closed
-// at match time).
-func CompileRuleMatch(raw v1alpha1.RuleMatch) RuleMatch {
+// pre-compiled regexps. Invalid regex patterns are compiled as nil and the
+// compilation error is logged; such matchers fail closed at match time.
+func CompileRuleMatch(logger logr.Logger, raw v1alpha1.RuleMatch) RuleMatch {
 	rm := RuleMatch{
 		Domains: raw.Domains,
 		Methods: raw.Methods,
@@ -80,7 +81,12 @@ func CompileRuleMatch(raw v1alpha1.RuleMatch) RuleMatch {
 	for _, p := range raw.Paths {
 		pm := pathMatcher{Type: p.Type, Value: p.Value}
 		if p.Type == v1alpha1.PathMatchTypeRegex {
-			pm.Re, _ = regexp.Compile(p.Value)
+			re, err := regexp.Compile(p.Value)
+			if err != nil {
+				logger.Error(err, "Invalid path regex; matcher fails closed",
+					"pattern", p.Value)
+			}
+			pm.Re = re
 		}
 		rm.Paths = append(rm.Paths, pm)
 	}
@@ -88,7 +94,12 @@ func CompileRuleMatch(raw v1alpha1.RuleMatch) RuleMatch {
 	for _, h := range raw.Headers {
 		sm := stringMatcher{Name: strings.ToLower(h.Name), Type: h.Type, Value: h.Value}
 		if h.Type == v1alpha1.StringMatchTypeRegex {
-			sm.Re, _ = regexp.Compile(h.Value)
+			re, err := regexp.Compile(h.Value)
+			if err != nil {
+				logger.Error(err, "Invalid header regex; matcher fails closed",
+					"header", h.Name, "pattern", h.Value)
+			}
+			sm.Re = re
 		}
 		rm.Headers = append(rm.Headers, sm)
 	}
@@ -96,7 +107,12 @@ func CompileRuleMatch(raw v1alpha1.RuleMatch) RuleMatch {
 	for _, q := range raw.QueryParams {
 		sm := stringMatcher{Name: q.Name, Type: q.Type, Value: q.Value}
 		if q.Type == v1alpha1.StringMatchTypeRegex {
-			sm.Re, _ = regexp.Compile(q.Value)
+			re, err := regexp.Compile(q.Value)
+			if err != nil {
+				logger.Error(err, "Invalid queryParam regex; matcher fails closed",
+					"queryParam", q.Name, "pattern", q.Value)
+			}
+			sm.Re = re
 		}
 		rm.QueryParams = append(rm.QueryParams, sm)
 	}
@@ -239,7 +255,7 @@ func (rm *RuleMatch) matchQueryParams(query url.Values) bool {
 // SecurityRule holds pre-compiled match conditions for a single SecurityRule.
 type SecurityRule struct {
 	Name    string
-	Actions *v1alpha1.SecurityRuleActions
+	Actions v1alpha1.SecurityRuleActions
 	Matches []RuleMatch
 }
 
@@ -254,15 +270,18 @@ func (cr *SecurityRule) MatchesRequest(req *RequestInfo) bool {
 }
 
 // CompileRules compiles all rules from a SecurityProfile spec into SecurityRules.
-func CompileRules(rules []v1alpha1.SecurityRule) []SecurityRule {
+// Regex compilation errors encountered while compiling individual matches are
+// logged via the provided logger.
+func CompileRules(logger logr.Logger, rules []v1alpha1.SecurityRule) []SecurityRule {
 	compiled := make([]SecurityRule, len(rules))
 	for i, rule := range rules {
+		ruleLogger := logger.WithValues("rule", rule.Name)
 		cr := SecurityRule{
 			Name:    rule.Name,
 			Actions: rule.Actions,
 		}
 		for _, m := range rule.Match {
-			cr.Matches = append(cr.Matches, CompileRuleMatch(m))
+			cr.Matches = append(cr.Matches, CompileRuleMatch(ruleLogger, m))
 		}
 		compiled[i] = cr
 	}
@@ -278,16 +297,20 @@ type SecurityProfile struct {
 }
 
 // NewSecurityProfile converts a v1alpha1.SecurityProfile into a model.SecurityProfile
-// with a pre-parsed label selector and pre-compiled rule regexps.
+// with a pre-parsed label selector and pre-compiled rule regexps. Regex
+// compilation errors are logged via the provided logger; the matchers that
+// failed to compile will fail closed at request time.
 // Returns an error if the profile's selector is invalid.
-func NewSecurityProfile(profile *v1alpha1.SecurityProfile) (*SecurityProfile, error) {
+func NewSecurityProfile(logger logr.Logger, profile *v1alpha1.SecurityProfile) (*SecurityProfile, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&profile.Spec.Selector)
 	if err != nil {
 		return nil, err
 	}
+	profileLogger := logger.WithValues(
+		"profile", profile.Namespace+"/"+profile.Name)
 	return &SecurityProfile{
 		Profile:       profile,
 		Selector:      selector,
-		SecurityRules: CompileRules(profile.Spec.Rules),
+		SecurityRules: CompileRules(profileLogger, profile.Spec.Rules),
 	}, nil
 }

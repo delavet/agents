@@ -49,7 +49,7 @@ func TestPlugin_OnRequestHeaders(t *testing.T) {
 			name: "bypass=false falls through",
 			rule: &model.SecurityRule{
 				Name:    "no-bypass",
-				Actions: &v1alpha1.SecurityRuleActions{Bypass: false},
+				Actions: v1alpha1.SecurityRuleActions{Bypass: false},
 			},
 			wantAction: plugins.ActionContinue,
 		},
@@ -57,7 +57,7 @@ func TestPlugin_OnRequestHeaders(t *testing.T) {
 			name: "non-bypass action falls through",
 			rule: &model.SecurityRule{
 				Name: "block-rule",
-				Actions: &v1alpha1.SecurityRuleActions{
+				Actions: v1alpha1.SecurityRuleActions{
 					Block: &v1alpha1.BlockAction{StatusCode: 403},
 				},
 			},
@@ -67,7 +67,7 @@ func TestPlugin_OnRequestHeaders(t *testing.T) {
 			name: "bypass=true short-circuits",
 			rule: &model.SecurityRule{
 				Name:    "bypass-rule",
-				Actions: &v1alpha1.SecurityRuleActions{Bypass: true},
+				Actions: v1alpha1.SecurityRuleActions{Bypass: true},
 			},
 			wantAction: plugins.ActionImmediate,
 		},
@@ -75,7 +75,7 @@ func TestPlugin_OnRequestHeaders(t *testing.T) {
 			name: "bypass=true wins even when other terminal actions are also set",
 			rule: &model.SecurityRule{
 				Name: "bypass-and-block",
-				Actions: &v1alpha1.SecurityRuleActions{
+				Actions: v1alpha1.SecurityRuleActions{
 					Bypass: true,
 					Block:  &v1alpha1.BlockAction{StatusCode: 403},
 				},

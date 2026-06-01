@@ -63,7 +63,7 @@ func (r *ExtProcServerRunner) AsRunnable(logger logr.Logger) manager.Runnable {
 	return runnable.NoLeaderElection(manager.RunnableFunc(func(ctx context.Context) error {
 		var srv *grpc.Server
 		if r.SecureServing {
-			cert, err := tlsutil.CreateSelfSignedTLSCertificate(logger)
+			cert, err := tlsutil.CreateSelfSignedTLSCertificate()
 			if err != nil {
 				logger.Error(err, "Failed to create self signed certificate")
 				return err

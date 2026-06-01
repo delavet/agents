@@ -19,15 +19,13 @@ package tls
 import (
 	"crypto/x509"
 	"testing"
-
-	"github.com/go-logr/logr"
 )
 
 // TestCreateSelfSignedTLSCertificate verifies the helper produces a parseable
 // X.509 certificate with a non-empty private key. RSA-4096 generation is slow
 // (~1s) but happens once at server startup so the cost is acceptable.
 func TestCreateSelfSignedTLSCertificate(t *testing.T) {
-	cert, err := CreateSelfSignedTLSCertificate(logr.Discard())
+	cert, err := CreateSelfSignedTLSCertificate()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

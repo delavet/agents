@@ -90,7 +90,7 @@ func TestPlugin_OnRequestHeaders_NoBlockAction(t *testing.T) {
 	p := New()
 	rule := &model.SecurityRule{
 		Name:    "no-block",
-		Actions: &v1alpha1.SecurityRuleActions{},
+		Actions: v1alpha1.SecurityRuleActions{},
 	}
 
 	res, err := p.OnRequestHeaders(context.Background(), &plugins.RequestContext{}, rule)
@@ -119,7 +119,7 @@ func TestPlugin_OnRequestHeaders_BlockMatched(t *testing.T) {
 	p := New()
 	rule := &model.SecurityRule{
 		Name: "block-rule",
-		Actions: &v1alpha1.SecurityRuleActions{
+		Actions: v1alpha1.SecurityRuleActions{
 			Block: &v1alpha1.BlockAction{StatusCode: 451, Body: strPtr("nope")},
 		},
 	}
