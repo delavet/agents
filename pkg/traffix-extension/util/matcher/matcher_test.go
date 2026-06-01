@@ -135,7 +135,7 @@ func TestParseRequestInfo_SplitsHostAndPath(t *testing.T) {
 	}
 }
 
-// TestParseRequestInfo_MalformedQuery verifies that an unparseable query
+// TestParseRequestInfo_MalformedQuery verifies that an unparsable query
 // string does not panic; the DEBUG log branch is exercised but the returned
 // Query may be empty or partial.
 func TestParseRequestInfo_MalformedQuery(t *testing.T) {
