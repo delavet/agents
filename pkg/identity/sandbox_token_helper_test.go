@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	agentsv1alpha1 "github.com/openkruise/agents/api/v1alpha1"
-	"github.com/openkruise/agents/pkg/utils"
 )
 
 // fakeIdentityProvider is a minimal IdentityProvider stub used to capture the
@@ -81,10 +80,10 @@ func TestIssueSandboxToken_Success(t *testing.T) {
 			Namespace: "ns-a",
 			UID:       types.UID("uid-a"),
 			Labels: map[string]string{
-				utils.SecurityMetadataPrefix + "tenant":  "t1",
-				utils.SecurityMetadataPrefix + "project": "p1",
-				"app":                                    "demo",         // non-security label, must be filtered out
-				"kubernetes.io/managed-by":               "sandbox-mgr",  // non-security label, must be filtered out
+				SecurityMetadataPrefix + "tenant":  "t1",
+				SecurityMetadataPrefix + "project": "p1",
+				"app":                              "demo",        // non-security label, must be filtered out
+				"kubernetes.io/managed-by":         "sandbox-mgr", // non-security label, must be filtered out
 			},
 		},
 	}
@@ -107,10 +106,10 @@ func TestIssueSandboxToken_Success(t *testing.T) {
 	assert.Equal(t, "sbx-a", gotReq.Sandbox.SandboxName)
 	assert.Equal(t, "uid-a", gotReq.Sandbox.SandboxUID)
 
-	// Only labels prefixed with utils.SecurityMetadataPrefix must flow into Metadata.
+	// Only labels prefixed with SecurityMetadataPrefix must flow into Metadata.
 	assert.Equal(t, map[string]string{
-		utils.SecurityMetadataPrefix + "tenant":  "t1",
-		utils.SecurityMetadataPrefix + "project": "p1",
+		SecurityMetadataPrefix + "tenant":  "t1",
+		SecurityMetadataPrefix + "project": "p1",
 	}, gotReq.Metadata)
 }
 
@@ -137,7 +136,7 @@ func TestIssueSandboxToken_NoLabels(t *testing.T) {
 }
 
 // TestIssueSandboxToken_OnlyNonSecurityLabels verifies the prefix filter rejects
-// every label that is not under utils.SecurityMetadataPrefix, even when label
+// every label that is not under identity.SecurityMetadataPrefix, even when label
 // values look plausible (e.g. share a substring with the prefix).
 func TestIssueSandboxToken_OnlyNonSecurityLabels(t *testing.T) {
 	fake := &fakeIdentityProvider{resp: &TokenResponse{AccessToken: "tok"}}
@@ -150,9 +149,9 @@ func TestIssueSandboxToken_OnlyNonSecurityLabels(t *testing.T) {
 			UID:       types.UID("uid"),
 			Labels: map[string]string{
 				"app":                            "demo",
-				"agents.kruise.io/team":          "infra",                      // shares root domain but lacks "security." prefix
-				"security-fake.agents.kruise.io": "no",                         // close-but-not-equal prefix
-				"x-security.agents.kruise.io/y":  "no",                         // prefix is not at the start
+				"agents.kruise.io/team":          "infra", // shares root domain but lacks "security." prefix
+				"security-fake.agents.kruise.io": "no",    // close-but-not-equal prefix
+				"x-security.agents.kruise.io/y":  "no",    // prefix is not at the start
 			},
 		},
 	}

@@ -25,13 +25,12 @@ import (
 	"k8s.io/klog/v2"
 
 	agentsv1alpha1 "github.com/openkruise/agents/api/v1alpha1"
-	"github.com/openkruise/agents/pkg/utils"
 )
 
 // IssueSandboxToken issues a security token for the given sandbox using the
 // registered identity provider.
 //
-// It collects all sandbox labels prefixed with utils.SecurityMetadataPrefix as
+// It collects all sandbox labels prefixed with identity.SecurityMetadataPrefix as
 // request metadata, builds a TokenRequest of type TokenTypeAgent, and delegates
 // to the package-level IssueToken entry. The returned cost reflects the total
 // duration spent issuing the token (including metadata collection), which
@@ -47,7 +46,7 @@ func IssueSandboxToken(ctx context.Context, sbx *agentsv1alpha1.Sandbox) (*Token
 
 	metadata := make(map[string]string)
 	for k, v := range sbx.GetLabels() {
-		if strings.HasPrefix(k, utils.SecurityMetadataPrefix) {
+		if strings.HasPrefix(k, SecurityMetadataPrefix) {
 			metadata[k] = v
 		}
 	}

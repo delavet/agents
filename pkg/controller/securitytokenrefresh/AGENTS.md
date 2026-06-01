@@ -5,7 +5,7 @@
 This package hosts a controller-runtime reconciler that proactively refreshes the
 security token of claimed sandboxes shortly before the token recorded in the
 sandbox annotation `security.agents.kruise.io/token-status`
-(`utils.AgentKeyTokenRefreshStatus`) expires.
+(`identity.AgentKeyTokenRefreshStatus`) expires.
 
 It runs inside the **agent-sandbox-controller** binary and is registered via
 `pkg/controller/controllers.go`. It is gated by the

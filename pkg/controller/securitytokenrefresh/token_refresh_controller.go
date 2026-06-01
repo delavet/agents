@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package securitytokenrefresh implements a controller-runtime reconciler that
 // refreshes the security token of claimed sandboxes shortly before the token
-// stored in the sandbox annotation utils.AgentKeyTokenRefreshStatus expires.
+// stored in the sandbox annotation identity.AgentKeyTokenRefreshStatus expires.
 //
 // The controller is meant to run inside the agent-sandbox-controller binary,
 // alongside the existing Sandbox / SandboxClaim / Checkpoint controllers. It is
@@ -49,7 +49,6 @@ import (
 	"github.com/openkruise/agents/pkg/discovery"
 	"github.com/openkruise/agents/pkg/features"
 	"github.com/openkruise/agents/pkg/identity"
-	"github.com/openkruise/agents/pkg/utils"
 	utilfeature "github.com/openkruise/agents/pkg/utils/feature"
 )
 
@@ -200,7 +199,7 @@ type SecurityTokenRefreshReconciler struct {
 //
 // The flow is intentionally side-effect-light: every decision (refresh vs.
 // requeue) is derived from the AccessTokenExpiration recorded in the
-// utils.AgentKeyTokenRefreshStatus annotation. The actual issue/propagate/patch
+// identity.AgentKeyTokenRefreshStatus annotation. The actual issue/propagate/patch
 // chain lives in core.Refresher to keep this method focused on policy.
 func (r *SecurityTokenRefreshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the sandbox instance
@@ -224,14 +223,14 @@ func (r *SecurityTokenRefreshReconciler) Reconcile(ctx context.Context, req ctrl
 
 	klog.V(5).InfoS("Began to process Sandbox for security token refresh", "sandbox", klog.KObj(box))
 
-	raw := box.Annotations[utils.AgentKeyTokenRefreshStatus]
+	raw := box.Annotations[identity.AgentKeyTokenRefreshStatus]
 	status, err := decodeTokenRefreshStatus(raw)
 	if err != nil {
 		// A malformed annotation should not put us into a hot retry loop.
 		// Surface it as an event and back off; an operator must clean it up.
 		klog.ErrorS(err, "decode token-status annotation failed", "sandbox", klog.KObj(box), "raw", raw)
 		r.Recorder.Eventf(box, corev1.EventTypeWarning, "TokenStatusDecodeFailed",
-			"failed to decode %s annotation: %v", utils.AgentKeyTokenRefreshStatus, err)
+			"failed to decode %s annotation: %v", identity.AgentKeyTokenRefreshStatus, err)
 		return ctrl.Result{RequeueAfter: refreshRetryAfter}, nil
 	}
 	// Annotation absent or decoded into an empty / partial object: there is

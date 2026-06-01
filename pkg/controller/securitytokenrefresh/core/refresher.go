@@ -29,7 +29,6 @@ import (
 
 	agentsv1alpha1 "github.com/openkruise/agents/api/v1alpha1"
 	"github.com/openkruise/agents/pkg/identity"
-	"github.com/openkruise/agents/pkg/utils"
 )
 
 // Refresher performs the actual security-token refresh on a single sandbox.
@@ -38,7 +37,7 @@ import (
 //  1. Issue a new token via identity.IssueSandboxToken.
 //  2. Propagate the new token to the runtime via identity.PropagateSandboxToken.
 //  3. Only after a successful propagation, patch the sandbox annotation
-//     utils.AgentKeyTokenRefreshStatus with the new expiration.
+//     identity.AgentKeyTokenRefreshStatus with the new expiration.
 //
 // If any earlier step fails, the annotation MUST NOT be updated, so the next
 // reconcile keeps trying with the same expiration window.
@@ -87,7 +86,7 @@ func (r *defaultRefresher) Refresh(ctx context.Context, sbx *agentsv1alpha1.Sand
 }
 
 // patchAnnotation persists the freshly issued token's expiration into the sandbox
-// annotation utils.AgentKeyTokenRefreshStatus using a MergeFrom patch so concurrent
+// annotation identity.AgentKeyTokenRefreshStatus using a MergeFrom patch so concurrent
 // updates on unrelated fields are not stomped.
 func (r *defaultRefresher) patchAnnotation(ctx context.Context, sbx *agentsv1alpha1.Sandbox, tokenResp *identity.TokenResponse) error {
 	raw, err := identity.EncodeTokenRefreshStatus(identity.BuildTokenRefreshStatus(tokenResp))
@@ -101,6 +100,6 @@ func (r *defaultRefresher) patchAnnotation(ctx context.Context, sbx *agentsv1alp
 	if updated.Annotations == nil {
 		updated.Annotations = make(map[string]string, 1)
 	}
-	updated.Annotations[utils.AgentKeyTokenRefreshStatus] = raw
+	updated.Annotations[identity.AgentKeyTokenRefreshStatus] = raw
 	return r.client.Patch(ctx, updated, client.MergeFrom(sbx))
 }
