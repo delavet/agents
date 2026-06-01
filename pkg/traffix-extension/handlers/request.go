@@ -40,16 +40,17 @@ const (
 	filterStateDownstreamPeerName      = "filter_state['downstream_peer'].name"
 	filterStateDownstreamPeerNamespace = "filter_state['downstream_peer'].namespace"
 	filterStateSandboxLabels           = "filter_state['sandbox.labels']"
-
-	defaultPodName = "sample"
-	defaultPodNs   = "default"
 )
 
 // HandleRequestHeaders processes request headers by walking the rule chain
 // and dispatching to the registered plugins.
 //
 // Algorithm:
-//  1. Resolve the source pod from filter_state (with E2E test fallbacks).
+//  1. Resolve the source pod from filter_state. If pod identity is missing
+//     the request is passed through unmodified — the ext-proc filter cannot
+//     enforce a SecurityProfile without knowing which pod is sending the
+//     traffic, and failing closed would break egress for misconfigured
+//     workloads.
 //  2. Look up matching SecurityProfiles via dynamic label matching.
 //  3. Scan rules. For each rule whose match clause succeeds, invoke each
 //     plugin in registration order. A plugin returning ActionImmediate
@@ -97,10 +98,14 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, headers *extProcPb.Ht
 	sandboxLabelsEncoded := extractFilterStateString(attrs, filterStateSandboxLabels)
 
 	if podNamespace == "" || podName == "" {
-		loggerD.Info("No pod info in filter_state, falling back to E2E defaults",
+		// Operator-visible: the ext-proc filter relies on Envoy populating
+		// filter_state['downstream_peer'] (e.g. via the Istio metadata
+		// exchange filter or an equivalent). Without it we cannot resolve
+		// the source pod, so no SecurityProfile can be applied. Pass the
+		// request through and let the operator find the misconfiguration.
+		logger.Info("Pod identity missing from filter_state; passing request through unmodified",
 			"podNamespace", podNamespace, "podName", podName)
-		podNamespace = defaultPodNs
-		podName = defaultPodName
+		return defaultPassThrough, nil
 	}
 
 	podLabels := podlabels.ParseSandboxLabels(sandboxLabelsEncoded)

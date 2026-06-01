@@ -386,6 +386,45 @@ func TestHandleRequestHeaders_NoProfileMatch(t *testing.T) {
 	}
 }
 
+// TestHandleRequestHeaders_NoPodIdentity verifies that when filter_state
+// does not carry pod identity (e.g. the upstream metadata-exchange filter
+// is misconfigured), the handler passes the request through unmodified
+// instead of falling back to a hardcoded pod or failing the request.
+func TestHandleRequestHeaders_NoPodIdentity(t *testing.T) {
+	store := configstore.NewStore()
+	store.ProfileSet(newProfile("p1", "default", map[string]string{"app": "blocked"}, []v1alpha1.SecurityRule{
+		{
+			Name:    "block-everything",
+			Match:   []v1alpha1.RuleMatch{{Domains: []string{"*"}}},
+			Actions: v1alpha1.SecurityRuleActions{Block: &v1alpha1.BlockAction{StatusCode: 403}},
+		},
+	}))
+
+	srv, cap := newServerWithAudit(t, store, []plugins.Plugin{block.New()})
+
+	// attrs with empty pod name + namespace simulates Envoy not populating
+	// filter_state['downstream_peer'].
+	resps, err := srv.HandleRequestHeaders(
+		context.Background(),
+		makeRequestHeaders("api.example.com", "/admin", "GET"),
+		makeAttrsWithLabels("", "", ""),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(resps))
+	}
+	if _, ok := resps[0].Response.(*extProcPb.ProcessingResponse_RequestHeaders); !ok {
+		t.Fatalf("expected pass-through RequestHeaders, got %T", resps[0].Response)
+	}
+
+	entry := cap.last(t)
+	if entry.Pod.Name != "" || entry.Pod.Namespace != "" {
+		t.Errorf("expected empty Pod in audit entry, got %+v", entry.Pod)
+	}
+}
+
 // TestHandleRequestHeaders_RuleWithEmptyActions covers the passthrough path
 // when a rule matches but its Actions struct is zero-valued (no Block, no
 // Bypass): every plugin returns Continue and the request falls through.
