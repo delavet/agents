@@ -16,7 +16,7 @@ Five Components:
 - sandbox-manager (`cmd/sandbox-manager/`): HTTP server with E2B-compatible REST APIs.
 - sandbox-gateway (`cmd/sandbox-gateway/`): Envoy Go HTTP filter for traffic routing.
 - agent-runtime (`cmd/agent-runtime/`): Sidecar running inside sandbox pods with envd-compatible APIs.
-- traffix-extension (`cmd/traffix-extension/`): Envoy ext-proc gRPC server reconciling SecurityProfile CRDs and injecting tokens into egress traffic. See `docs/components/traffix-extension.md`.
+- traffic-extension (`cmd/traffic-extension/`): Envoy ext-proc gRPC server reconciling SecurityProfile CRDs and injecting tokens into egress traffic. See `docs/components/traffic-extension.md`.
 
 ## Tech Stack
 
@@ -43,7 +43,7 @@ pkg/
   servers/         E2B API, web framework. MUST NOT import pkg/features.
   proxy/           Envoy ext_proc gRPC server
   sandbox-gateway/ Envoy Go filter, route controller, registry
-  traffix-extension/ Envoy ext-proc server for SecurityProfile (token injection)
+  traffic-extension/ Envoy ext-proc server for SecurityProfile (token injection)
   webhook/         Admission webhooks
   agent-runtime/   Runtime types, CSI providers, storages
   peers/           Peer discovery (memberlist)
@@ -64,7 +64,7 @@ test/              E2E (Go), E2B (Python) tests
 - SandboxTemplate (`sbt`): Reusable pod spec template, referenced via `TemplateRef`.
 - SandboxUpdateOps (`suo`): Batch update operations targeting sandboxes by label selector. Supports rolling/partitioned strategies.
 - Checkpoint (`cp`): Checkpoint operation (memory/filesystem snapshot).
-- SecurityProfile (`sp`): L7 egress traffic policy (match + actions like token injection); consumed by `traffix-extension`.
+- SecurityProfile (`sp`): L7 egress traffic policy (match + actions like token injection); consumed by `traffic-extension`.
 
 ## Coding Conventions
 

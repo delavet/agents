@@ -23,7 +23,7 @@ spec:
           SecurityProfile defines the L7 security/compliance profile for Sandbox
           AI Agent egress HTTP/HTTPS traffic.
 
-          See docs/components/traffix-extension.md for the full semantic model.
+          See docs/components/traffic-extension.md for the full semantic model.
         properties:
           apiVersion:
             description: |-
@@ -118,7 +118,7 @@ spec:
 
                               CAUTION: wildcard and specific domains can both match the same request
                               under Default Continue semantics, so rule ordering matters. See
-                              docs/components/traffix-extension.md.
+                              docs/components/traffic-extension.md.
                             items:
                               type: string
                             minItems: 1

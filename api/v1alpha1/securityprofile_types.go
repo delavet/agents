@@ -20,10 +20,10 @@ import (
 )
 
 // NOTE: only Block and Bypass are currently implemented by the
-// traffix-extension data plane. Additional action types (TokenTransformation /
+// traffic-extension data plane. Additional action types (TokenTransformation /
 // IdentityInjection / SecurityCheck / Mirroring / RateLimit / Forwarding)
 // were removed from this CRD until their plugin implementations land — see
-// docs/components/traffix-extension.md.
+// docs/components/traffic-extension.md.
 
 // PathMatchType enumerates URL path matching strategies.
 // +kubebuilder:validation:Enum=Prefix;Exact;Regex
@@ -124,7 +124,7 @@ type RuleMatch struct {
 	//
 	// CAUTION: wildcard and specific domains can both match the same request
 	// under Default Continue semantics, so rule ordering matters. See
-	// docs/components/traffix-extension.md.
+	// docs/components/traffic-extension.md.
 	// +kubebuilder:validation:MinItems=1
 	Domains []string `json:"domains"`
 	// Paths lists URL path matches; multiple entries are ORed. The path
@@ -273,7 +273,7 @@ type SecurityProfileStatus struct {
 // SecurityProfile defines the L7 security/compliance profile for Sandbox
 // AI Agent egress HTTP/HTTPS traffic.
 //
-// See docs/components/traffix-extension.md for the full semantic model.
+// See docs/components/traffic-extension.md for the full semantic model.
 type SecurityProfile struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
