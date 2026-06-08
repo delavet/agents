@@ -30,7 +30,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -82,7 +81,6 @@ type Reconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
-	Codec    runtime.Codec
 }
 
 const (
@@ -95,6 +93,7 @@ const (
 // +kubebuilder:rbac:groups=agents.kruise.io,resources=sandboxsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agents.kruise.io,resources=sandboxsets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agents.kruise.io,resources=sandboxsets/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agents.kruise.io,resources=sandboxtemplates,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -215,6 +214,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		log.Error(err, "failed to update sandboxset status")
 		allErrors = errors.Join(allErrors, err)
 	}
+	r.cleanupOldSandboxTemplates(ctx, sbs)
 	return ctrl.Result{RequeueAfter: requeueAfter}, allErrors
 }
 
@@ -469,11 +469,13 @@ func (r *Reconciler) groupAllSandboxes(ctx context.Context, sbs *agentsv1alpha1.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	controllerName := "sandboxset-controller"
 	r.Recorder = mgr.GetEventRecorderFor(controllerName)
-	r.Codec = serializer.NewCodecFactory(mgr.GetScheme()).LegacyCodec(agentsv1alpha1.SchemeGroupVersion)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(controllerName).
 		WithOptions(controller.Options{MaxConcurrentReconciles: concurrentReconciles}).
 		Watches(&agentsv1alpha1.SandboxSet{}, &handler.EnqueueRequestForObject{}).
 		Watches(&agentsv1alpha1.Sandbox{}, &SandboxEventHandler{}).
+		Watches(&agentsv1alpha1.SandboxTemplate{},
+			handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(),
+				&agentsv1alpha1.SandboxSet{}, handler.OnlyControllerOwner())).
 		Complete(r)
 }

@@ -118,9 +118,15 @@ type SandboxSetStatus struct {
 	// AvailableReplicas is the number of available sandboxes, which are ready to be claimed.
 	AvailableReplicas int32 `json:"availableReplicas"`
 
-	// UpdateRevision is the hash label of the ControllerRevision created from `spec.template`.
+	// UpdateRevision is the FNV-32 hash computed from spec.template,
+	// spec.persistentContents, and spec.runtimes.
 	// It represents the latest desired template version.
 	UpdateRevision string `json:"updateRevision,omitempty"`
+
+	// CurrentRevision is the SandboxTemplate name corresponding to the currently
+	// materialised revision, or spec.templateRef.Name when templateRef is used.
+	// +optional
+	CurrentRevision string `json:"currentRevision,omitempty"`
 
 	// UpdatedReplicas is the number of sandboxes that have been updated to the UpdateRevision.
 	// +optional
