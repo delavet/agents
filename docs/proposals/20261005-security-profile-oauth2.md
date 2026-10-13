@@ -101,7 +101,7 @@ selects different response extensions and precedes the general Token rule.
 
 | Field | Required / default | Meaning |
 | --- | --- | --- |
-| `operation` | Required | Exactly one endpoint role; zero or multiple branches are rejected. |
+| `operation` | Required | Select exactly one endpoint role; branch-count validation belongs to the EPE integration. |
 | `operation.deviceAuthorization` | Selected branch; may be empty | Creates a device authorization session. |
 | `operation.deviceAuthorization.allowAuthorizedSession` | Optional / `true` | Accepts a service-confirmed authorized session without a verification URI. Explicit `false` rejects that response; it does not force a new prompt. |
 | `operation.token` | Selected branch; may be empty | Processes `grant_type` and returns placeholder token metadata. |
@@ -142,14 +142,16 @@ EPE rejects fields that would replace `access_token`, `refresh_token`,
 `token_type`, `expires_in`, `scope`, `error`, `error_description`, `error_uri`,
 `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`,
 or `interval`. Resource success replies and DeviceAuthorization success
-replies are not extended. `customResponse.success` is rejected by CRD CEL
-validation outside the Token operation, including an explicitly empty object.
+replies are not extended. `customResponse.success` applies only to Token;
+the EPE integration must reject it for other operations.
 
 ### Validation ownership
 
-CRD schemas enforce transformation selection, exactly one operation branch,
-the Token-only success extension, field types, selected-device defaulting, and
-grant set semantics. Defaults do not create an unselected operation branch.
+CRD schemas enforce field types, selected-device defaulting, and grant set
+semantics. No OAuth2 cross-field CEL validation is added in this API PR.
+The EPE integration must validate transformation/configuration pairing,
+exactly one operation branch, and the Token-only success extension.
+Defaults do not create an unselected operation branch.
 `allowAuthorizedSession` uses a pointer so explicit `false` survives Go
 serialization and policy projection.
 
@@ -210,7 +212,8 @@ require a separate service and transport design.
 - An explicit request-format option duplicates Content-Type and can disagree
   with the actual request. Decode using the request header instead.
 - Repeating `customResponse` inside every branch duplicates a common concept.
-  Keep it beside `operation`, with CEL restricting `success` to Token.
+  Keep it beside `operation`, with runtime validation restricting `success`
+  to Token.
 - RPC actions and parameter maps expose credential integration details in a
   traffic policy. Derive those internally from operation and grant semantics.
 
@@ -231,15 +234,14 @@ source repository; agents-api is not edited independently.
 
 - Run `make generate manifests` to generate DeepCopy/client code and both
   SecurityProfile CRDs from API source.
-- Validate both complete CRDs using Kubernetes schema/CEL validation, including
-  admission cost limits.
-- Exercise minimum configurations, branch conflicts, selected-device defaults,
-  explicit false, grant set constraints, preserved response objects, and
-  rejection of success extensions outside Token.
+- Validate both complete CRDs using Kubernetes schema validation.
+- Exercise minimum configurations, selected-device defaults, explicit false,
+  grant set constraints, and preserved response objects.
 - Validate existing ApiKey and AliyunSTS configurations against the resulting
   transformation schemas.
-- In the follow-up Agentio integration, test CRD-to-neutral-payload projection
-  and the real lark-cli login/poll/refresh/resource path on ACS. Earlier test
+- In the follow-up Agentio integration, test cross-field constraints,
+  CRD-to-neutral-payload projection, and the real lark-cli
+  login/poll/refresh/resource path on ACS. Earlier test
   deployment evidence is not a validation of the new public wiring.
 
 ## References

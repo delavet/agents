@@ -19,7 +19,6 @@ package v1alpha1
 import "k8s.io/apimachinery/pkg/runtime"
 
 // OAuth2Config selects an OAuth endpoint independently of its URL or provider.
-// +kubebuilder:validation:XValidation:rule="!has(self.customResponse) || !has(self.customResponse.success) || has(self.operation.token)",message="customResponse.success is only supported for the token operation"
 type OAuth2Config struct {
 	// Operation contains exactly one endpoint role and its options.
 	Operation OAuth2Operation `json:"operation"`
@@ -31,7 +30,6 @@ type OAuth2Config struct {
 
 // OAuth2Operation selects exactly one endpoint role. Empty role objects are valid.
 // These roles describe policy behavior, not OAuth grant types or service RPCs.
-// +kubebuilder:validation:XValidation:rule="(has(self.deviceAuthorization) ? 1 : 0) + (has(self.token) ? 1 : 0) + (has(self.resource) ? 1 : 0) == 1",message="exactly one OAuth2 operation is required"
 type OAuth2Operation struct {
 	// DeviceAuthorization creates a device authorization session.
 	// +optional

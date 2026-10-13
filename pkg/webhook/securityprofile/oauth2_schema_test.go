@@ -28,13 +28,11 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	crdvalidation "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/validation"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
-	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/defaulting"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/listtype"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/pruning"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	celconfig "k8s.io/apiserver/pkg/apis/cel"
 	"sigs.k8s.io/yaml"
 )
 
@@ -55,7 +53,7 @@ func TestOAuth2CRDSchema(t *testing.T) {
 			}
 			crd.Status.StoredVersions = []string{"v1alpha1"}
 			if errs := crdvalidation.ValidateCustomResourceDefinition(context.Background(), &crd); len(errs) != 0 {
-				t.Fatalf("CRD admission, including CEL compilation and cost: %v", errs)
+				t.Fatalf("CRD admission: %v", errs)
 			}
 
 			root := crd.Spec.Validation.OpenAPIV3Schema
@@ -79,9 +77,6 @@ func TestOAuth2CRDSchema(t *testing.T) {
 					t.Fatal(err)
 				}
 				errs := validation.ValidateCustomResource(field.NewPath("profile"), obj, validator)
-				celValidator := cel.NewValidator(structural, true, celconfig.PerCallLimit)
-				celErrs, _ := celValidator.Validate(context.Background(), field.NewPath("profile"), structural, obj, nil, celconfig.RuntimeCELCostBudget)
-				errs = append(errs, celErrs...)
 				if len(errs) != 0 {
 					t.Fatal(errs)
 				}
@@ -108,7 +103,6 @@ func TestOAuth2CRDSchema(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			celValidator := cel.NewValidator(structural, false, celconfig.PerCallLimit)
 			for _, tc := range []struct {
 				name                  string
 				config                string
@@ -128,12 +122,6 @@ func TestOAuth2CRDSchema(t *testing.T) {
 				{name: "empty grant string", config: `{"operation":{"token":{"allowedGrantTypes":[""]}}}`, wantError: "allowedGrantTypes"},
 				{name: "duplicate grants", config: `{"operation":{"token":{"allowedGrantTypes":["refresh_token","refresh_token"]}}}`, wantError: "Duplicate"},
 				{name: "operation missing", config: `{}`, wantError: "operation"},
-				{name: "zero branches", config: `{"operation":{}}`, wantError: "exactly one"},
-				{name: "device and token", config: `{"operation":{"deviceAuthorization":{},"token":{}}}`, wantError: "exactly one"},
-				{name: "token and resource", config: `{"operation":{"token":{},"resource":{}}}`, wantError: "exactly one"},
-				{name: "all branches", config: `{"operation":{"deviceAuthorization":{},"token":{},"resource":{}}}`, wantError: "exactly one"},
-				{name: "device success", config: `{"operation":{"deviceAuthorization":{}},"customResponse":{"success":{}}}`, wantError: "only supported for the token"},
-				{name: "resource success", config: `{"operation":{"resource":{}},"customResponse":{"success":{"code":0}}}`, wantError: "only supported for the token"},
 				{name: "non-object response", config: `{"operation":{"token":{}},"customResponse":{"success":42}}`, wantError: "success"},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
@@ -148,8 +136,6 @@ func TestOAuth2CRDSchema(t *testing.T) {
 					defaulting.Default(obj, structural)
 					errs := validation.ValidateCustomResource(field.NewPath("tokenTransformation"), obj, validator)
 					errs = append(errs, listtype.ValidateListSetsAndMaps(field.NewPath("tokenTransformation"), structural, obj)...)
-					celErrs, _ := celValidator.Validate(context.Background(), field.NewPath("tokenTransformation"), structural, obj, nil, celconfig.RuntimeCELCostBudget)
-					errs = append(errs, celErrs...)
 					if tc.wantError != "" {
 						if len(errs) == 0 || !strings.Contains(errs.ToAggregate().Error(), tc.wantError) {
 							t.Fatalf("want error containing %q, got %v", tc.wantError, errs)
@@ -185,12 +171,9 @@ func TestOAuth2CRDSchema(t *testing.T) {
 			for _, tc := range []struct {
 				name string
 				obj  string
-				want bool
 			}{
-				{name: "existing API key", obj: `{"type":"ApiKey","apiKey":{"valueTemplate":"Bearer {{ .Token }}"}}`, want: true},
-				{name: "existing STS", obj: `{"type":"AliyunSTS"}`, want: true},
-				{name: "OAuth missing config", obj: `{"type":"OAuth2"}`},
-				{name: "OAuth config on API key", obj: `{"type":"ApiKey","oauth2":{"operation":{"token":{}}}}`},
+				{name: "existing API key", obj: `{"type":"ApiKey","apiKey":{"valueTemplate":"Bearer {{ .Token }}"}}`},
+				{name: "existing STS", obj: `{"type":"AliyunSTS"}`},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					var obj map[string]interface{}
@@ -200,10 +183,8 @@ func TestOAuth2CRDSchema(t *testing.T) {
 					obj["credentialRef"] = map[string]interface{}{"credentialProvider": map[string]interface{}{"name": "provider"}}
 					defaulting.Default(obj, structural)
 					errs := validation.ValidateCustomResource(field.NewPath("tokenTransformation"), obj, validator)
-					celErrs, _ := celValidator.Validate(context.Background(), field.NewPath("tokenTransformation"), structural, obj, nil, celconfig.RuntimeCELCostBudget)
-					errs = append(errs, celErrs...)
-					if (len(errs) == 0) != tc.want {
-						t.Fatalf("valid = %v, want %v: %v", len(errs) == 0, tc.want, errs)
+					if len(errs) != 0 {
+						t.Fatal(errs)
 					}
 				})
 			}
