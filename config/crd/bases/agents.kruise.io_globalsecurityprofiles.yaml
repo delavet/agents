@@ -797,6 +797,86 @@ spec:
                               - Block
                               - Ignore
                               type: string
+                            oauth2:
+                              description: |-
+                                OAuth2 declares the endpoint operation and optional response extensions.
+                                It is required for OAuth2 and must be omitted for other transformations.
+                                OAuth2 uses a CredentialProvider reference and the Block failure strategy.
+                              properties:
+                                customResponse:
+                                  description: |-
+                                    CustomResponse adds public application fields to generated OAuth replies.
+                                    It cannot replace standard OAuth fields or change upstream resource replies.
+                                  properties:
+                                    authorizationRequired:
+                                      description: |-
+                                        AuthorizationRequired adds fields when the service confirms a
+                                        non-retryable need for new authorization. Its fields override matching
+                                        application fields in Error, while standard OAuth fields remain protected.
+                                      type: object
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    error:
+                                      description: Error adds fields to an OAuth error
+                                        reply for any operation.
+                                      type: object
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    success:
+                                      description: |-
+                                        Success adds fields to a successful token reply. Only Token supports this;
+                                        device authorization success and upstream resource replies are unchanged.
+                                      type: object
+                                      x-kubernetes-preserve-unknown-fields: true
+                                  type: object
+                                operation:
+                                  description: Operation contains exactly one endpoint
+                                    role and its options.
+                                  properties:
+                                    deviceAuthorization:
+                                      description: DeviceAuthorization creates a device
+                                        authorization session.
+                                      properties:
+                                        allowAuthorizedSession:
+                                          default: true
+                                          description: |-
+                                            AllowAuthorizedSession permits a service-confirmed already-authorized
+                                            device session with no verification URI. Defaults to true. Set false for
+                                            clients requiring an RFC 8628 verification URI; it does not force a new
+                                            authorization prompt or grant permissions.
+                                          type: boolean
+                                      type: object
+                                    resource:
+                                      description: Resource injects a service-issued
+                                        Bearer credential into the request.
+                                      type: object
+                                    token:
+                                      description: Token processes token grants and
+                                        returns placeholder credentials.
+                                      properties:
+                                        allowedGrantTypes:
+                                          description: |-
+                                            AllowedGrantTypes optionally restricts requests to exact grant_type values,
+                                            including extension grant URIs. Omitted or empty adds no policy restriction;
+                                            protocol support and service authorization still apply.
+                                          items:
+                                            minLength: 1
+                                            type: string
+                                          type: array
+                                          x-kubernetes-list-type: set
+                                      type: object
+                                  type: object
+                                  x-kubernetes-validations:
+                                  - message: exactly one OAuth2 operation is required
+                                    rule: '(has(self.deviceAuthorization) ? 1 : 0)
+                                      + (has(self.token) ? 1 : 0) + (has(self.resource)
+                                      ? 1 : 0) == 1'
+                              required:
+                              - operation
+                              type: object
+                              x-kubernetes-validations:
+                              - message: customResponse.success is only supported
+                                  for the token operation
+                                rule: '!has(self.customResponse) || !has(self.customResponse.success)
+                                  || has(self.operation.token)'
                             type:
                               default: ApiKey
                               description: Type discriminates the transformation strategy.
@@ -804,10 +884,15 @@ spec:
                               enum:
                               - ApiKey
                               - AliyunSTS
+                              - OAuth2
                               type: string
                           required:
                           - credentialRef
                           type: object
+                          x-kubernetes-validations:
+                          - message: oauth2 must be set exactly when type is OAuth2
+                            rule: has(self.oauth2) == (has(self.type) && self.type
+                              == 'OAuth2')
                       type: object
                     match:
                       description: Match lists match conditions. Multiple entries

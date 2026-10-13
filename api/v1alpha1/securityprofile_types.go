@@ -191,7 +191,7 @@ type ActionCondition struct {
 }
 
 // TokenTransformationType identifies a credential transformation strategy.
-// +kubebuilder:validation:Enum=ApiKey;AliyunSTS
+// +kubebuilder:validation:Enum=ApiKey;AliyunSTS;OAuth2
 type TokenTransformationType string
 
 const (
@@ -201,6 +201,9 @@ const (
 	// TokenTransformationTypeAliyunSTS replaces the credentials in an Aliyun
 	// SDK request and recomputes its signature.
 	TokenTransformationTypeAliyunSTS TokenTransformationType = "AliyunSTS"
+	// TokenTransformationTypeOAuth2 brokers OAuth operations through a
+	// credential provider without exposing its real credentials to the workload.
+	TokenTransformationTypeOAuth2 TokenTransformationType = "OAuth2"
 )
 
 // CredentialRefKind identifies a deprecated credential source type.
@@ -399,6 +402,7 @@ type TokenTransformationHeaderSelector struct {
 }
 
 // TokenTransformationAction rewrites credentials on an outgoing request.
+// +kubebuilder:validation:XValidation:rule="has(self.oauth2) == (has(self.type) && self.type == 'OAuth2')",message="oauth2 must be set exactly when type is OAuth2"
 type TokenTransformationAction struct {
 	// Disabled skips the action without removing its configuration.
 	// +optional
@@ -415,6 +419,11 @@ type TokenTransformationAction struct {
 	Type TokenTransformationType `json:"type,omitempty"`
 	// CredentialRef identifies the credential source.
 	CredentialRef CredentialRef `json:"credentialRef"`
+	// OAuth2 declares the endpoint operation and optional response extensions.
+	// It is required for OAuth2 and must be omitted for other transformations.
+	// OAuth2 uses a CredentialProvider reference and the Block failure strategy.
+	// +optional
+	OAuth2 *OAuth2Config `json:"oauth2,omitempty"`
 
 	// ApiKey configures an ApiKey transformation. It is required for ApiKey and
 	// ignored for AliyunSTS. When targetHeaders is set, targetHeaders and value
