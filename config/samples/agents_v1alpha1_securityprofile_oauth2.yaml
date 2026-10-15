@@ -19,7 +19,7 @@ spec:
           type: OAuth2
           credentialRef: {credentialProvider: {name: lark-cli}}
           oauth2:
-            # Allows a service-confirmed existing authorization by default.
+            # Accepts an existing authorization confirmed by the service.
             operation: {deviceAuthorization: {}}
     - name: json-refresh
       match:

@@ -803,8 +803,8 @@ spec:
 
                                 Examples:
 
-                                The following example creates a device authorization session. The empty
-                                branch uses the default allowAuthorizedSession: true:
+                                The following example creates a device authorization session or reuses an
+                                existing authorization confirmed by the credential service:
 
                                     oauth2:
                                       operation:
@@ -867,15 +867,6 @@ spec:
                                     deviceAuthorization:
                                       description: DeviceAuthorization creates a device
                                         authorization session.
-                                      properties:
-                                        allowAuthorizedSession:
-                                          default: true
-                                          description: |-
-                                            AllowAuthorizedSession permits a service-confirmed already-authorized
-                                            device session with no verification URI. Defaults to true. Set false for
-                                            clients requiring an RFC 8628 verification URI; it does not force a new
-                                            authorization prompt or grant permissions.
-                                          type: boolean
                                       type: object
                                     resource:
                                       description: Resource injects a service-issued

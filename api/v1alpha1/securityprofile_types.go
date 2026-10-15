@@ -424,8 +424,8 @@ type TokenTransformationAction struct {
 	//
 	// Examples:
 	//
-	// The following example creates a device authorization session. The empty
-	// branch uses the default allowAuthorizedSession: true:
+	// The following example creates a device authorization session or reuses an
+	// existing authorization confirmed by the credential service:
 	//
 	//     oauth2:
 	//       operation:

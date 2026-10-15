@@ -104,16 +104,14 @@ func TestOAuth2CRDSchema(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, tc := range []struct {
-				name                  string
-				config                string
-				wantError             string
-				wantAuthorizedSession bool
+				name      string
+				config    string
+				wantError string
 			}{
-				{name: "device defaults", config: `{"operation":{"deviceAuthorization":{}}}`, wantAuthorizedSession: true},
-				{name: "device explicit false", config: `{"operation":{"deviceAuthorization":{"allowAuthorizedSession":false}}}`},
+				{name: "device minimum", config: `{"operation":{"deviceAuthorization":{}}}`},
 				{name: "token minimum", config: `{"operation":{"token":{}}}`},
 				{name: "resource minimum", config: `{"operation":{"resource":{}}}`},
-				{name: "device errors", config: `{"operation":{"deviceAuthorization":{}},"customResponse":{"error":{"code":20050},"authorizationRequired":{"code":20026}}}`, wantAuthorizedSession: true},
+				{name: "device errors", config: `{"operation":{"deviceAuthorization":{}},"customResponse":{"error":{"code":20050},"authorizationRequired":{"code":20026}}}`},
 				{name: "resource errors", config: `{"operation":{"resource":{}},"customResponse":{"error":{"code":20050},"authorizationRequired":{"code":99991663}}}`},
 				{name: "token extensions", config: `{"operation":{"token":{}},"customResponse":{"success":{"code":0,"data":{"public":true},"extra":[1,"x",null]},"error":{"code":20050},"authorizationRequired":{"code":20026}}}`},
 				{name: "grant set", config: `{"operation":{"token":{"allowedGrantTypes":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"]}}}`},
@@ -150,8 +148,8 @@ func TestOAuth2CRDSchema(t *testing.T) {
 						t.Fatalf("defaulting created unselected operation: %v", operation)
 					}
 					if device, ok := operation["deviceAuthorization"].(map[string]interface{}); ok {
-						if device["allowAuthorizedSession"] != tc.wantAuthorizedSession {
-							t.Fatalf("allowAuthorizedSession = %v, want %v", device["allowAuthorizedSession"], tc.wantAuthorizedSession)
+						if len(device) != 0 {
+							t.Fatalf("deviceAuthorization must remain an empty object: %v", device)
 						}
 					}
 					encoded, err := json.Marshal(config["customResponse"])

@@ -77,11 +77,10 @@ actions:
 The other two operation configurations are equally small:
 
 ```yaml
-# Device authorization. Its only option defaults to true.
+# Device authorization, including a service-confirmed existing authorization.
 oauth2:
   operation:
-    deviceAuthorization:
-      allowAuthorizedSession: true
+    deviceAuthorization: {}
 ---
 # Business resource access. Only EPE-generated errors are extended;
 # the upstream business response is passed through.
@@ -102,8 +101,7 @@ selects different response extensions and precedes the general Token rule.
 | Field | Required / default | Meaning |
 | --- | --- | --- |
 | `operation` | Required | Select exactly one endpoint role; branch-count validation belongs to the EPE integration. |
-| `operation.deviceAuthorization` | Selected branch; may be empty | Creates a device authorization session. |
-| `operation.deviceAuthorization.allowAuthorizedSession` | Optional / `true` | Accepts a service-confirmed authorized session without a verification URI. Explicit `false` rejects that response; it does not force a new prompt. |
+| `operation.deviceAuthorization` | Selected branch; empty object | Creates a device authorization session or accepts an existing authorization confirmed by the service. |
 | `operation.token` | Selected branch; may be empty | Processes `grant_type` and returns placeholder token metadata. |
 | `operation.token.allowedGrantTypes` | Optional / no additional restriction | A set of nonempty exact strings, including extension grant URIs. Omitted or empty does not bypass protocol support or service authorization. |
 | `operation.resource` | Selected branch; empty object | Injects the current real Bearer token and forwards the original resource request. |
@@ -147,13 +145,16 @@ the EPE integration must reject it for other operations.
 
 ### Validation ownership
 
-CRD schemas enforce field types, selected-device defaulting, and grant set
+CRD schemas enforce field types and grant set
 semantics. No OAuth2 cross-field CEL validation is added in this API PR.
 The EPE integration must validate transformation/configuration pairing,
 exactly one operation branch, and the Token-only success extension.
 Defaults do not create an unselected operation branch.
-`allowAuthorizedSession` uses a pointer so explicit `false` survives Go
-serialization and policy projection.
+
+The credential service decides whether a new authorization is needed. EPE
+accepts a service-confirmed authorized session without a new verification URI,
+while still validating its explicit authorization state and required session
+metadata. The policy does not force a new prompt.
 
 The follow-up EPE integration enforces CredentialProvider selection, Block
 failure behavior, protected response fields, request parameters, and verified

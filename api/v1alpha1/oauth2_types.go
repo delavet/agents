@@ -42,16 +42,9 @@ type OAuth2Operation struct {
 	Resource *OAuth2ResourceConfig `json:"resource,omitempty"`
 }
 
-// OAuth2DeviceAuthorizationConfig configures the device authorization endpoint.
-type OAuth2DeviceAuthorizationConfig struct {
-	// AllowAuthorizedSession permits a service-confirmed already-authorized
-	// device session with no verification URI. Defaults to true. Set false for
-	// clients requiring an RFC 8628 verification URI; it does not force a new
-	// authorization prompt or grant permissions.
-	// +optional
-	// +kubebuilder:default=true
-	AllowAuthorizedSession *bool `json:"allowAuthorizedSession,omitempty"`
-}
+// OAuth2DeviceAuthorizationConfig selects device authorization, including an
+// existing authorized session confirmed by the credential service.
+type OAuth2DeviceAuthorizationConfig struct{}
 
 // OAuth2TokenConfig configures the token endpoint. Form and JSON requests are
 // decoded according to Content-Type; no request format is configured in policy.
